@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ONE PICK — Stop Scrolling. Start Watching.</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anton&family=Space+Mono:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --ink:#0E0C09; --paper:#ECE3CF; --yellow:#F2B705;
+    --red:#B3201A; --teal:#16433D; --white:#FFFDF6;
+    --nav-h:68px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{background:var(--ink);color:var(--paper);font-family:'Space Mono',monospace;overflow-x:hidden;}
+  body{min-height:100vh;padding-top:var(--nav-h);}
+
+  /* ── POSTER BG ── */
+  #posterBg{position:fixed;top:0;left:0;width:100%;height:100%;display:grid;grid-template-columns:repeat(8,1fr);z-index:0;opacity:0;transition:opacity 1.2s;}
+  #posterBg.loaded{opacity:1;}
+  #posterBg img{width:100%;height:100%;object-fit:cover;filter:grayscale(55%) brightness(0.32) contrast(1.1);}
+  #posterBg::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.18) 0,rgba(0,0,0,.18) 1px,transparent 1px,transparent 3px),radial-gradient(ellipse at 50% 30%,rgba(14,12,9,.35) 0%,rgba(14,12,9,.88) 75%);pointer-events:none;}
+
+  /* ── TOP NAV BAR ── */
+  #topNav{
+    position:fixed;top:0;left:0;width:100%;height:var(--nav-h);z-index:50;
+    background:var(--ink);border-bottom:3px solid var(--paper);
+    display:flex;align-items:stretch;
+  }
+  /* left slot for watchlist FAB */
+  #topNav .nav-left{width:180px;flex-shrink:0;display:flex;align-items:center;padding-left:16px;}
+  #topNav .nav-tabs{display:flex;flex:1;align-items:stretch;}
+  .nav-tab{
+    font-family:'Anton',sans-serif;font-size:clamp(16px,2.8vw,22px);letter-spacing:0.03em;
+    text-transform:uppercase;background:transparent;color:var(--paper);
+    border:none;border-right:3px solid var(--paper);padding:0 clamp(16px,3vw,36px);
+    cursor:pointer;position:relative;transition:background .12s,color .12s;flex:1;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+  }
+  .nav-tab:last-child{border-right:none;}
+  .nav-tab.active{background:var(--yellow);color:var(--ink);}
+  .nav-tab.active::after{
+    content:'';position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);
+    width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;
+    border-top:6px solid var(--yellow);
+  }
+  .nav-tab:not(.active):hover{background:rgba(236,227,207,.07);}
+  .nav-tab svg{width:20px;height:20px;flex-shrink:0;}
+
+  /* ── WATCHLIST FAB (inside nav left slot) ── */
+  .watchlist-fab{
+    display:flex;align-items:center;gap:8px;
+    background:var(--yellow);color:var(--ink);
+    border:3px solid var(--ink);padding:9px 13px;
+    cursor:pointer;transform:rotate(-2deg);
+    box-shadow:5px 5px 0 var(--red);
+    transition:transform .15s,box-shadow .15s;
+    font-family:'Space Mono',monospace;position:relative;
+  }
+  .watchlist-fab:hover{transform:rotate(0deg) translate(-2px,-2px);box-shadow:7px 7px 0 var(--red);}
+  .watchlist-fab svg{width:22px;height:22px;flex-shrink:0;}
+  .watchlist-fab .fab-label{font-weight:700;font-size:11px;text-transform:uppercase;letter-spacing:.04em;}
+  .wl-badge{
+    position:absolute;top:-9px;right:-9px;
+    background:var(--red);color:var(--white);font-weight:700;font-size:10px;
+    width:22px;height:22px;border-radius:50%;border:2px solid var(--ink);
+    display:flex;align-items:center;justify-content:center;
+  }
+  @media(max-width:560px){
+    #topNav .nav-left{width:64px;padding-left:10px;}
+    .watchlist-fab .fab-label{display:none;}
+    .watchlist-fab{padding:8px;}
+  }
+
+  /* ── WATCHLIST MODAL ── */
+  .wl-modal{display:none;position:fixed;inset:0;z-index:200;background:rgba(14,12,9,.86);padding:24px;align-items:flex-start;justify-content:center;overflow-y:auto;}
+  .wl-modal.show{display:flex;}
+  .wl-modal-inner{background:var(--ink);border:3px solid var(--paper);max-width:640px;width:100%;margin-top:56px;padding:32px;box-shadow:12px 12px 0 var(--yellow);position:relative;}
+  .wl-modal-close{position:absolute;top:14px;right:14px;background:var(--red);color:var(--white);border:2px solid var(--ink);width:32px;height:32px;font-weight:700;font-size:16px;cursor:pointer;line-height:1;}
+  .wl-modal h2{font-family:'Anton',sans-serif;font-size:28px;text-transform:uppercase;color:var(--white);margin-bottom:6px;}
+  .wl-modal .sub{font-size:12px;opacity:.65;margin-bottom:22px;}
+  .wl-search{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;}
+  .wl-search input{flex:1;min-width:180px;background:var(--ink);border:2.5px solid var(--paper);color:var(--paper);padding:12px 14px;font-family:'Space Mono',monospace;font-size:13px;}
+  .wl-search input:focus{outline:none;border-color:var(--yellow);}
+  .wl-search button{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;text-transform:uppercase;background:var(--teal);color:var(--white);border:2.5px solid var(--teal);padding:0 20px;cursor:pointer;}
+  #wlResults{margin-bottom:18px;}
+  .wl-result-row{display:flex;align-items:center;gap:12px;padding:8px;border-bottom:1px solid rgba(236,227,207,.2);}
+  .wl-result-row img{width:36px;height:54px;object-fit:cover;flex-shrink:0;}
+  .wl-result-row .info{flex:1;font-size:12px;color:var(--paper);}
+  .wl-result-row .addbtn{font-size:11px;font-weight:700;text-transform:uppercase;background:var(--yellow);color:var(--ink);border:none;padding:7px 12px;cursor:pointer;}
+  #wlGrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:12px;}
+  .wl-card{position:relative;border:2px solid var(--paper);}
+  .wl-card img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;}
+  .wl-card .rm{position:absolute;top:4px;right:4px;width:22px;height:22px;background:var(--red);color:var(--white);border:none;font-weight:700;cursor:pointer;line-height:1;font-size:14px;}
+  .wl-empty{font-size:12px;opacity:.6;padding:10px 0;color:var(--paper);}
+  .wl-modal-foot{font-size:11px;opacity:.6;margin-top:14px;color:var(--paper);}
+  .group-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--yellow);margin:14px 0 10px;font-weight:700;}
+  .group-label:first-child{margin-top:0;}
+
+  /* ── PAGES ── */
+  .page{display:none;position:relative;z-index:1;}
+  .page.active{display:block;}
+  .wrap{max-width:920px;margin:0 auto;padding:48px 24px 100px;}
+
+  /* ── SHARED COMPONENTS ── */
+  .panel{border:3px solid var(--paper);background:rgba(14,12,9,.78);padding:28px;margin-bottom:28px;box-shadow:8px 8px 0 var(--teal);}
+  .panel h2{font-family:'Anton',sans-serif;font-size:22px;text-transform:uppercase;letter-spacing:.02em;margin-bottom:18px;color:var(--white);}
+  .panel .num{color:var(--red);margin-right:10px;}
+  .panel .optional-tag{font-size:11px;letter-spacing:.1em;color:var(--yellow);font-weight:400;text-transform:uppercase;margin-left:8px;opacity:.85;}
+  .chips{display:flex;flex-wrap:wrap;gap:12px;}
+  .chip{font-family:'Space Mono',monospace;font-weight:700;font-size:13px;text-transform:uppercase;letter-spacing:.04em;background:transparent;color:var(--paper);border:2.5px solid var(--paper);padding:12px 18px;cursor:pointer;transition:transform .08s,background .15s,color .15s;}
+  .chip:hover{transform:translate(-2px,-2px);}
+  .chip.active{background:var(--yellow);color:var(--ink);border-color:var(--yellow);box-shadow:4px 4px 0 var(--red);}
+  .chip.small{padding:9px 14px;font-size:12px;}
+  .clear-link{font-size:11px;text-decoration:underline;color:var(--paper);opacity:.65;background:none;border:none;cursor:pointer;margin-top:14px;padding:0;font-family:'Space Mono',monospace;}
+  .clear-link:hover{opacity:1;}
+  footer{text-align:center;margin-top:70px;font-size:11px;opacity:.45;letter-spacing:.05em;}
+
+  /* ── PAGE 1: ONE PICK ── */
+  .page-hero{text-align:center;margin-bottom:56px;}
+  .eyebrow{font-size:12px;letter-spacing:.32em;text-transform:uppercase;color:var(--yellow);margin-bottom:18px;font-weight:700;}
+  h1.marquee{font-family:'Anton',sans-serif;font-size:clamp(58px,13vw,128px);line-height:.86;text-transform:uppercase;color:var(--ink);background:var(--yellow);display:inline-block;padding:6px 22px 14px;box-shadow:10px 10px 0 var(--red);transform:rotate(-1.2deg);border:3px solid var(--ink);}
+  .tagline{margin-top:28px;font-size:15px;letter-spacing:.04em;color:var(--paper);opacity:.85;}
+  .tagline b{color:var(--yellow);}
+  .cta-row{text-align:center;margin-top:8px;}
+  #goBtn{font-family:'Anton',sans-serif;font-size:26px;text-transform:uppercase;letter-spacing:.03em;background:var(--red);color:var(--white);border:3px solid var(--ink);padding:18px 44px;cursor:pointer;box-shadow:8px 8px 0 var(--yellow);transition:transform .1s;}
+  #goBtn:hover{transform:translate(-3px,-3px);box-shadow:11px 11px 0 var(--yellow);}
+  #goBtn:active{transform:translate(0,0);box-shadow:3px 3px 0 var(--yellow);}
+  #goBtn:disabled{opacity:.5;cursor:wait;}
+  .hint{margin-top:14px;font-size:11px;opacity:.6;letter-spacing:.05em;}
+  #loadingState{display:none;text-align:center;padding:60px 0;}
+  #loadingState.show{display:block;}
+  .reel{font-family:'Anton',sans-serif;font-size:18px;color:var(--yellow);letter-spacing:.2em;animation:flicker 1.1s infinite steps(2);}
+  @keyframes flicker{50%{opacity:.35;}}
+  #errorBox{display:none;border:2.5px solid var(--red);background:rgba(179,32,26,.12);color:var(--white);padding:16px 20px;margin-top:20px;font-size:13px;}
+  #errorBox.show{display:block;}
+
+  /* ── TICKET ── */
+  #result{display:none;margin-top:10px;}
+  #result.show{display:block;animation:dropIn .4s ease;}
+  @keyframes dropIn{from{opacity:0;transform:translateY(18px);}to{opacity:1;transform:translateY(0);}}
+  .ticket{background:var(--paper);color:var(--ink);border:3px solid var(--ink);box-shadow:12px 12px 0 var(--red);display:grid;grid-template-columns:160px 1fr;}
+  .ticket-poster img{width:100%;height:100%;object-fit:cover;display:block;filter:saturate(1.05) contrast(1.05);}
+  .ticket-body{padding:26px 28px;position:relative;}
+  .stub-divider{position:relative;border-left:3px dashed var(--ink);}
+  .stub-divider::before,.stub-divider::after{content:'';position:absolute;width:22px;height:22px;background:var(--ink);border-radius:50%;left:-13px;}
+  .stub-divider::before{top:-11px;}
+  .stub-divider::after{bottom:-11px;}
+  .ticket-label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--red);font-weight:700;margin-bottom:6px;}
+  .ticket-title{font-family:'Anton',sans-serif;font-size:clamp(26px,4vw,38px);text-transform:uppercase;line-height:1;margin-bottom:10px;}
+  .ticket-meta{font-size:12px;opacity:.7;margin-bottom:16px;}
+  .ticket-reason{font-size:14px;line-height:1.65;margin-bottom:20px;}
+  .ticket-reason::before{content:'"';color:var(--red);font-weight:700;}
+  .ticket-reason::after{content:'"';color:var(--red);font-weight:700;}
+  .ticket-where{border-top:2px dashed rgba(14,12,9,.3);padding-top:16px;margin-bottom:6px;}
+  .watch-chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;}
+  .watch-chip{display:flex;align-items:center;gap:6px;background:var(--ink);color:var(--white);border:2px solid var(--ink);padding:5px 10px 5px 6px;font-size:12px;font-weight:700;}
+  .watch-chip img{width:18px;height:18px;border-radius:3px;display:block;}
+  .watch-note{font-size:12px;opacity:.75;}
+  .watch-link{color:var(--red);font-weight:700;text-decoration:underline;}
+  .result-actions{display:flex;gap:14px;margin-top:24px;flex-wrap:wrap;}
+  .btn-ghost{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;background:transparent;color:var(--paper);border:2px solid var(--paper);padding:11px 18px;cursor:pointer;}
+  .btn-ghost:hover{background:var(--paper);color:var(--ink);}
+  .btn-fill{font-family:'Space Mono',monospace;font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.05em;background:var(--teal);color:var(--white);border:2px solid var(--teal);padding:11px 18px;cursor:pointer;}
+  .btn-fill:hover{filter:brightness(1.15);}
+
+  /* ── PAGE 2: FIND SIMILAR ── */
+  .sim-hero{text-align:center;margin-bottom:52px;}
+  .sim-hero h1{font-family:'Anton',sans-serif;font-size:clamp(52px,11vw,108px);line-height:.86;text-transform:uppercase;color:var(--ink);background:var(--teal);display:inline-block;padding:6px 22px 14px;box-shadow:10px 10px 0 var(--yellow);transform:rotate(1deg);border:3px solid var(--ink);}
+  .sim-hero p{margin-top:26px;font-size:15px;opacity:.85;line-height:1.6;}
+  .sim-hero p b{color:var(--yellow);}
+  .sim-search-row{display:flex;gap:0;margin-bottom:10px;}
+  .sim-search-row input{flex:1;background:var(--ink);border:3px solid var(--paper);border-right:none;color:var(--paper);padding:16px 18px;font-family:'Space Mono',monospace;font-size:15px;}
+  .sim-search-row input::placeholder{opacity:.5;}
+  .sim-search-row input:focus{outline:none;border-color:var(--yellow);}
+  .sim-search-row button{font-family:'Anton',sans-serif;font-size:17px;letter-spacing:.04em;text-transform:uppercase;background:var(--paper);color:var(--ink);border:3px solid var(--paper);padding:0 28px;cursor:pointer;white-space:nowrap;transition:background .12s;}
+  .sim-search-row button:hover{background:var(--yellow);border-color:var(--yellow);}
+  .sim-dropdown{background:var(--ink);border:2.5px solid var(--paper);border-top:none;display:none;margin-bottom:16px;}
+  .sim-dropdown.show{display:block;}
+  .sim-drop-item{display:flex;align-items:center;gap:14px;padding:10px 14px;border-bottom:1px solid rgba(236,227,207,.15);cursor:pointer;}
+  .sim-drop-item:last-child{border-bottom:none;}
+  .sim-drop-item:hover{background:rgba(242,183,5,.12);}
+  .sim-drop-item img{width:34px;height:50px;object-fit:cover;flex-shrink:0;}
+  .sim-drop-item .drop-info{font-size:13px;}
+  .sim-drop-item .drop-info span{opacity:.55;margin-left:6px;font-size:11px;}
+  .source-badge{display:none;align-items:center;gap:12px;border:2.5px solid var(--yellow);background:rgba(242,183,5,.07);padding:12px 16px;margin-bottom:24px;}
+  .source-badge.show{display:flex;}
+  .source-badge img{width:32px;height:48px;object-fit:cover;flex-shrink:0;border:1.5px solid var(--paper);}
+  .source-badge .src-info{flex:1;font-size:13px;font-weight:700;}
+  .source-badge .src-info span{opacity:.6;font-weight:400;margin-left:6px;font-size:11px;}
+  .source-badge .src-clear{background:none;border:none;color:var(--paper);opacity:.55;font-size:18px;cursor:pointer;padding:0 4px;line-height:1;}
+  .source-badge .src-clear:hover{opacity:1;color:var(--red);}
+  #simBtn{font-family:'Anton',sans-serif;font-size:20px;text-transform:uppercase;letter-spacing:.03em;background:var(--teal);color:var(--white);border:3px solid var(--ink);padding:16px 36px;cursor:pointer;box-shadow:7px 7px 0 var(--yellow);transition:transform .1s;display:block;width:100%;}
+  #simBtn:hover{transform:translate(-3px,-3px);box-shadow:10px 10px 0 var(--yellow);}
+  #simBtn:disabled{opacity:.5;cursor:wait;}
+  #simLoading{display:none;text-align:center;padding:40px 0;}
+  #simLoading.show{display:block;}
+  #simError{display:none;border:2.5px solid var(--red);background:rgba(179,32,26,.12);color:var(--white);padding:14px 18px;margin-top:16px;font-size:13px;}
+  #simError.show{display:block;}
+  #simResults{display:none;margin-top:32px;}
+  #simResults.show{display:block;animation:dropIn .4s ease;}
+  .sim-source-line{font-size:12px;letter-spacing:.08em;text-transform:uppercase;opacity:.6;margin-bottom:20px;text-align:center;}
+  .sim-source-line b{color:var(--yellow);opacity:1;}
+  .sim-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;}
+  @media(max-width:640px){.sim-grid{grid-template-columns:1fr;}}
+  .sim-card{background:var(--paper);color:var(--ink);border:3px solid var(--ink);box-shadow:6px 6px 0 var(--teal);position:relative;display:flex;flex-direction:column;}
+  .sim-card-rank{position:absolute;top:-3px;left:-3px;background:var(--yellow);color:var(--ink);border:3px solid var(--ink);font-family:'Anton',sans-serif;font-size:20px;width:38px;height:38px;display:flex;align-items:center;justify-content:center;z-index:1;}
+  .sim-card img{width:100%;aspect-ratio:2/3;object-fit:cover;display:block;filter:saturate(1.05);}
+  .sim-card-body{padding:14px 14px 16px;flex:1;display:flex;flex-direction:column;}
+  .sim-card-title{font-family:'Anton',sans-serif;font-size:18px;text-transform:uppercase;line-height:1.05;margin-bottom:6px;}
+  .sim-card-meta{font-size:11px;opacity:.65;margin-bottom:10px;}
+  .sim-card-why{font-size:12px;line-height:1.6;flex:1;border-top:1.5px dashed rgba(14,12,9,.3);padding-top:10px;margin-top:auto;}
+  .sim-card-why::before{content:'WHY: ';font-weight:700;color:var(--red);font-size:10px;letter-spacing:.1em;}
+  .sim-card-where{border-top:1.5px dashed rgba(14,12,9,.3);padding:10px 14px 12px;font-size:11px;}
+  .sim-card-where .w-label{font-weight:700;text-transform:uppercase;font-size:10px;letter-spacing:.1em;color:var(--red);margin-bottom:6px;}
+  .sim-card-where .w-chips{display:flex;flex-wrap:wrap;gap:5px;}
+  .sim-card-where .w-chip{display:flex;align-items:center;gap:4px;background:var(--ink);color:var(--white);padding:3px 6px 3px 4px;font-size:10px;font-weight:700;}
+  .sim-card-where .w-chip img{width:14px;height:14px;border-radius:2px;}
+
+  /* ── MOBILE TICKET ── */
+  @media(max-width:600px){
+    .ticket{grid-template-columns:1fr;}
+    .ticket-poster{height:260px;}
+    .stub-divider{border-left:none;border-top:3px dashed var(--ink);}
+    .stub-divider::before{top:-13px;left:50%;transform:translateX(-50%);}
+    .stub-divider::after{display:none;}
+  }
+  :focus-visible{outline:3px solid var(--yellow);outline-offset:2px;}
+  @media(prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;}}
+</style>
+</head>
+<body>
+
+<div id="posterBg"></div>
+
+<!-- ── TOP NAV BAR ── -->
+<nav id="topNav">
+  <div class="nav-left">
+    <button class="watchlist-fab" id="watchlistFab" aria-label="Open watchlist">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17.5 3.5 19 2 21 4l-1.5 1.5"/><path d="M5 7v13a1 1 0 0 0 1.5.87L12 18l5.5 2.87A1 1 0 0 0 19 20V7"/><path d="M5 7c0-2.5 2-4.5 7-4.5"/>
+      </svg>
+      <span class="fab-label">Watchlist</span>
+      <span class="wl-badge" id="wlBadge">0</span>
+    </button>
+  </div>
+  <div class="nav-tabs">
+    <button class="nav-tab active" id="tabPick" data-page="page-pick">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="10 8 16 12 10 16 10 8"/></svg>
+      One Pick
+    </button>
+    <button class="nav-tab" id="tabSimilar" data-page="page-similar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+      Find Similar
+    </button>
+  </div>
+</nav>
+
+<!-- ── WATCHLIST MODAL ── -->
+<div class="wl-modal" id="wlModal">
+  <div class="wl-modal-inner">
+    <button class="wl-modal-close" id="wlModalClose">×</button>
+    <h2>Your Watchlist</h2>
+    <div class="sub">Movies you love or want to see. We'll never suggest these again.</div>
+    <div class="wl-search">
+      <input type="text" id="wlInput" placeholder="Search a movie title…">
+      <button id="wlSearchBtn">Search</button>
+    </div>
+    <div id="wlResults"></div>
+    <div class="group-label">Saved</div>
+    <div id="wlGrid"></div>
+    <div class="wl-empty" id="wlEmptyMsg">Nothing saved yet — search above to add one.</div>
+    <p class="wl-modal-foot">Saved on this device only.</p>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE 1 — ONE PICK
+     ════════════════════════════════════════ -->
+<div class="page active" id="page-pick">
+  <div class="wrap">
+    <div class="page-hero">
+      <div class="eyebrow">A film decided in under 30 seconds</div>
+      <h1 class="marquee">ONE<br>PICK</h1>
+      <p class="tagline">No scrolling. No lists. No ten tabs open. <b>One movie. Chosen for you.</b></p>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">01</span>Genre<span class="optional-tag">— optional</span></h2>
+      <div class="group-label">Popular</div>
+      <div class="chips" id="genreChipsPopular"></div>
+      <div class="group-label">Niche</div>
+      <div class="chips" id="genreChipsNiche"></div>
+      <button class="clear-link" id="clearGenres">Clear genre selection</button>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">02</span>What's the mood tonight?</h2>
+      <div class="chips" id="moodChips">
+        <button class="chip" data-mood="Thrilling">Thrilling</button>
+        <button class="chip" data-mood="Cozy">Cozy</button>
+        <button class="chip" data-mood="Mind-bending">Mind-bending</button>
+        <button class="chip" data-mood="Funny">Funny</button>
+        <button class="chip" data-mood="Heartfelt">Heartfelt</button>
+        <button class="chip" data-mood="Dark">Dark</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">03</span>How much time do you have?</h2>
+      <div class="chips" id="timeChips">
+        <button class="chip" data-time="Quick">Quick (under 90 min)</button>
+        <button class="chip" data-time="Standard">Standard (90–130 min)</button>
+        <button class="chip" data-time="Epic">Epic (130+ min)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2><span class="num">04</span>Familiar or surprising?</h2>
+      <div class="chips" id="modeChips">
+        <button class="chip" data-mode="Know">Something reliable</button>
+        <button class="chip" data-mode="Surprise">Surprise me</button>
+      </div>
+    </div>
+
+    <div class="cta-row">
+      <button id="goBtn">Give Me One Pick</button>
+      <div class="hint">No log-in. No list of ten. Just one.</div>
+    </div>
+
+    <div id="errorBox"></div>
+    <div id="loadingState"><div class="reel">DEVELOPING THE REEL…</div></div>
+
+    <div id="result">
+      <div class="ticket">
+        <div class="ticket-poster"><img id="resPoster" src="" alt=""></div>
+        <div class="ticket-body stub-divider">
+          <div class="ticket-label">Tonight's pick</div>
+          <div class="ticket-title" id="resTitle"></div>
+          <div class="ticket-meta" id="resMeta"></div>
+          <div class="ticket-reason" id="resReason"></div>
+          <div class="ticket-where">
+            <div class="ticket-label">Where to watch</div>
+            <div id="resWatch" class="watch-note">Checking…</div>
+          </div>
+          <div class="result-actions">
+            <button class="btn-fill" id="notThisBtn">Not This One</button>
+            <button class="btn-ghost" id="restartBtn">Start Over</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <footer>ONE PICK — built for people tired of choosing. Data via TMDB.</footer>
+  </div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE 2 — FIND SIMILAR
+     ════════════════════════════════════════ -->
+<div class="page" id="page-similar">
+  <div class="wrap">
+    <div class="sim-hero">
+      <h1>FIND<br>SIMILAR</h1>
+      <p>Type a film you love. We'll find <b>3 films</b> that match its<br>themes, style, plot, or character archetypes.</p>
+    </div>
+
+    <div class="panel">
+      <div class="sim-search-row">
+        <input type="text" id="simInput" placeholder="e.g. The Godfather, Parasite, Inception…" autocomplete="off">
+        <button id="simSearchBtn">Search</button>
+      </div>
+      <div class="sim-dropdown" id="simDropdown"></div>
+      <div class="source-badge" id="sourceBadge">
+        <img id="sourcePoster" src="" alt="">
+        <div class="src-info" id="sourceInfo"></div>
+        <button class="src-clear" id="srcClear">×</button>
+      </div>
+      <button id="simBtn">Find 3 Similar Films</button>
+      <div id="simError"></div>
+    </div>
+
+    <div id="simLoading"><div class="reel">SCANNING THE ARCHIVE…</div></div>
+
+    <div id="simResults">
+      <div class="sim-source-line" id="simSourceLine"></div>
+      <div class="sim-grid" id="simGrid"></div>
+    </div>
+
+    <footer>ONE PICK — built for people tired of choosing. Data via TMDB.</footer>
+  </div>
+</div>
+
+<script>
+/* ── CONFIG ── */
+const TMDB_TOKEN = "eyJhbGciOiJIUzI1NiJ9.eyJhdWQiOiI2YjliZTkyZDg0NjhkZDhhNjk0Y2VhOTU5OGViNjkzNyIsIm5iZiI6MTc4MjAzMzk5Mi41ODUsInN1YiI6IjZhMzdhZTQ4NDg4MDVhMWM2NGE1YzI5YSIsInNjb3BlcyI6WyJhcGlfcmVhZCJdLCJ2ZXJzaW9uIjoxfQ.YWaxiZxV8CJq9KphG3d5-4jH8RO1vzoQN_iJwTdYg1s";
+// GROQ_KEY intentionally removed — calls go through /api/groq (serverless proxy)
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+const WATCH_REGION_PRIORITY = ["IN","US"];
+
+const MOOD_GENRE_MAP = {
+  "Thrilling":[53,28],"Cozy":[35,10751,10749],
+  "Mind-bending":[878,9648],"Funny":[35],
+  "Heartfelt":[18,10749],"Dark":[27,80,53]
+};
+const POPULAR_GENRES = [
+  {id:28,label:"Action"},{id:35,label:"Comedy"},{id:18,label:"Drama"},
+  {id:27,label:"Horror"},{id:10749,label:"Romance"},{id:53,label:"Thriller"},
+  {id:878,label:"Sci-Fi"},{id:16,label:"Animation"},{id:14,label:"Fantasy"},{id:80,label:"Crime"}
+];
+const NICHE_GENRES = [
+  {id:99,label:"Documentary"},{id:10752,label:"War"},{id:37,label:"Western"},
+  {id:10402,label:"Music"},{id:36,label:"History"},{id:9648,label:"Mystery"},
+  {id:10751,label:"Family"},{id:12,label:"Adventure"}
+];
+
+/* ── PAGE SWITCHING ── */
+document.querySelectorAll('.nav-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    document.getElementById(tab.dataset.page).classList.add('active');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+});
+
+/* ── STATE ── */
+let state = { mood:null, time:null, mode:null, genres:new Set(), candidates:[], excluded:new Set(), page:1, lastPickedId:null };
+
+/* ── WATCHLIST ── */
+const WATCHLIST_KEY = 'onepick_watchlist_v1';
+const getWatchlist  = () => { try{ return JSON.parse(localStorage.getItem(WATCHLIST_KEY)||'[]'); }catch(e){ return []; } };
+const saveWatchlist = list => localStorage.setItem(WATCHLIST_KEY, JSON.stringify(list));
+
+const wlModal = document.getElementById('wlModal');
+document.getElementById('watchlistFab').addEventListener('click', () => { wlModal.classList.add('show'); document.body.style.overflow='hidden'; });
+document.getElementById('wlModalClose').addEventListener('click', closeWlModal);
+wlModal.addEventListener('click', e => { if(e.target===wlModal) closeWlModal(); });
+document.addEventListener('keydown', e => { if(e.key==='Escape' && wlModal.classList.contains('show')) closeWlModal(); });
+function closeWlModal(){ wlModal.classList.remove('show'); document.body.style.overflow=''; }
+
+async function tmdbSearch(query){
+  const r = await fetch(`https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(query)}&language=en-US&include_adult=false&page=1`,{headers:{Authorization:'Bearer '+TMDB_TOKEN}});
+  if(!r.ok) throw new Error('Search failed');
+  const d = await r.json();
+  return (d.results||[]).filter(m=>m.poster_path).slice(0,6);
+}
+
+document.getElementById('wlSearchBtn').addEventListener('click', runWlSearch);
+document.getElementById('wlInput').addEventListener('keydown', e => { if(e.key==='Enter') runWlSearch(); });
+async function runWlSearch(){
+  const q = document.getElementById('wlInput').value.trim();
+  const box = document.getElementById('wlResults');
+  if(!q){ box.innerHTML=''; return; }
+  box.innerHTML='<div class="wl-empty">Searching…</div>';
+  try{
+    const hits = await tmdbSearch(q);
+    if(!hits.length){ box.innerHTML='<div class="wl-empty">No matches.</div>'; return; }
+    box.innerHTML='';
+    hits.forEach(m=>{
+      const row=document.createElement('div'); row.className='wl-result-row';
+      row.innerHTML=`<img src="https://image.tmdb.org/t/p/w92${m.poster_path}" alt=""><div class="info">${m.title} ${m.release_date?'('+m.release_date.slice(0,4)+')':''}</div><button class="addbtn">Add</button>`;
+      row.querySelector('.addbtn').addEventListener('click',()=>{ addToWl(m); box.innerHTML=''; document.getElementById('wlInput').value=''; });
+      box.appendChild(row);
+    });
+  }catch(e){ box.innerHTML='<div class="wl-empty">Search failed.</div>'; }
+}
+function addToWl(movie){
+  const list=getWatchlist();
+  if(list.some(m=>m.id===movie.id)) return;
+  list.push({id:movie.id,title:movie.title,poster_path:movie.poster_path,release_date:movie.release_date||''});
+  saveWatchlist(list); renderWl();
+}
+function removeFromWl(id){ saveWatchlist(getWatchlist().filter(m=>m.id!==id)); renderWl(); }
+function renderWl(){
+  const grid=document.getElementById('wlGrid'), list=getWatchlist();
+  document.getElementById('wlEmptyMsg').style.display=list.length?'none':'block';
+  grid.innerHTML='';
+  list.forEach(m=>{
+    const c=document.createElement('div'); c.className='wl-card';
+    c.innerHTML=`<img src="https://image.tmdb.org/t/p/w154${m.poster_path}" alt="${m.title}" title="${m.title}"><button class="rm" aria-label="Remove">×</button>`;
+    c.querySelector('.rm').addEventListener('click',()=>removeFromWl(m.id));
+    grid.appendChild(c);
+  });
+  document.getElementById('wlBadge').textContent=list.length;
+}
+renderWl();
+
+/* ── POSTER BACKGROUND ── */
+(async ()=>{
+  try{
+    const r=await fetch('https://api.themoviedb.org/3/trending/movie/week?language=en-US',{headers:{Authorization:'Bearer '+TMDB_TOKEN}});
+    const d=await r.json(), bg=document.getElementById('posterBg');
+    (d.results||[]).filter(m=>m.poster_path).slice(0,16).forEach(m=>{ const img=document.createElement('img'); img.src='https://image.tmdb.org/t/p/w300'+m.poster_path; img.alt=''; bg.appendChild(img); });
+    bg.classList.add('loaded');
+  }catch(e){}
+})();
+
+/* ── GENRE CHIPS ── */
+function buildGenreChips(){
+  ['Popular','Niche'].forEach(type=>{
+    const arr=type==='Popular'?POPULAR_GENRES:NICHE_GENRES;
+    const wrap=document.getElementById('genreChips'+type);
+    arr.forEach(g=>{
+      const btn=document.createElement('button');
+      btn.className='chip small'; btn.textContent=g.label; btn.dataset.gid=g.id;
+      btn.addEventListener('click',()=>{ btn.classList.toggle('active'); btn.classList.contains('active')?state.genres.add(g.id):state.genres.delete(g.id); });
+      wrap.appendChild(btn);
+    });
+  });
+}
+buildGenreChips();
+document.getElementById('clearGenres').addEventListener('click',()=>{ state.genres.clear(); document.querySelectorAll('#genreChipsPopular .chip,#genreChipsNiche .chip').forEach(b=>b.classList.remove('active')); });
+
+/* ── SINGLE-SELECT CHIPS ── */
+function wireSingle(id, key, cb){
+  document.querySelectorAll('#'+id+' .chip').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const already=btn.classList.contains('active');
+      document.querySelectorAll('#'+id+' .chip').forEach(b=>b.classList.remove('active'));
+      if(!already){ btn.classList.add('active'); cb(btn.dataset[key]); } else cb(null);
+    });
+  });
+}
+wireSingle('moodChips','mood', v=>state.mood=v);
+wireSingle('timeChips','time', v=>state.time=v);
+wireSingle('modeChips','mode', v=>state.mode=v);
+
+/* ── TMDB DISCOVER ── */
+async function discoverMovies(pg){
+  const moodIds=MOOD_GENRE_MAP[state.mood], explicit=Array.from(state.genres);
+  let qIds, requireAnd=null;
+  if(explicit.length){ qIds=explicit; requireAnd=moodIds; } else qIds=moodIds;
+  let rt='';
+  if(state.time==='Quick') rt='&with_runtime.lte=90';
+  else if(state.time==='Standard') rt='&with_runtime.gte=90&with_runtime.lte=130';
+  else rt='&with_runtime.gte=130';
+  const sort=state.mode==='Know'?'&sort_by=popularity.desc&vote_count.gte=300':'&sort_by=vote_average.desc&vote_count.gte=60&vote_count.lte=3000';
+  const url=`https://api.themoviedb.org/3/discover/movie?with_genres=${qIds.join('|')}${rt}${sort}&page=${pg}&language=en-US&include_adult=false`;
+  const r=await fetch(url,{headers:{Authorization:'Bearer '+TMDB_TOKEN}});
+  if(!r.ok) throw new Error('TMDB discover failed: '+r.status);
+  const d=await r.json();
+  let results=(d.results||[]).filter(m=>m.poster_path&&m.overview);
+  if(requireAnd){ const f=results.filter(m=>(m.genre_ids||[]).some(id=>requireAnd.includes(id))); if(f.length>=4) results=f; }
+  const wlIds=new Set(getWatchlist().map(m=>m.id));
+  return results.filter(m=>!wlIds.has(m.id));
+}
+
+/* ── WHERE TO WATCH ── */
+async function fetchWhereToWatch(movieId){
+  try{
+    const r=await fetch(`https://api.themoviedb.org/3/movie/${movieId}/watch/providers`,{headers:{Authorization:'Bearer '+TMDB_TOKEN}});
+    if(!r.ok) return null;
+    const d=await r.json();
+    for(const region of WATCH_REGION_PRIORITY){ const rg=d.results?.[region]; if(rg&&(rg.flatrate||rg.rent||rg.buy)) return rg; }
+    return Object.values(d.results||{}).find(rg=>rg.flatrate)||null;
+  }catch(e){ return null; }
+}
+function renderWhereToWatch(region){
+  const box=document.getElementById('resWatch');
+  if(!region){ box.innerHTML='<span class="watch-note">No streaming info found.</span>'; return; }
+  const providers=region.flatrate||region.rent||region.buy||[];
+  const label=region.flatrate?'Stream on':region.rent?'Rent on':'Buy on';
+  if(!providers.length){ box.innerHTML='<span class="watch-note">No streaming info found.</span>'; return; }
+  const chips=providers.slice(0,6).map(p=>`<span class="watch-chip"><img src="https://image.tmdb.org/t/p/w45${p.logo_path}" alt="">${p.provider_name}</span>`).join('');
+  const link=region.link?`<div style="margin-top:8px;"><a class="watch-link" href="${region.link}" target="_blank" rel="noopener">See all options →</a></div>`:'';
+  box.innerHTML=`<span class="watch-note">${label}:</span><div class="watch-chips">${chips}</div>${link}`;
+}
+
+/* ── GROQ PICK (one pick) ── */
+async function askGroqForPick(movies){
+  const validIds=movies.map(m=>m.id);
+  const slim=movies.map(m=>({id:m.id,title:m.title,year:(m.release_date||'').slice(0,4),rating:m.vote_average,overview:m.overview.slice(0,260)}));
+  const genreNote=state.genres.size>0?`The user also wants genre(s): ${Array.from(state.genres).map(id=>{ const f=[...POPULAR_GENRES,...NICHE_GENRES].find(g=>g.id===id); return f?f.label:id; }).join(', ')}.`:'';
+  const sys=`You are a sharp, opinionated film curator for ONE PICK. Pick the single best movie from this list for: mood="${state.mood}", time="${state.time}", preference="${state.mode==='Know'?'reliable':'surprising'}". ${genreNote} Valid ids: [${validIds.join(', ')}]. Never invent an id. Respond ONLY raw JSON: {"id":<number>,"reason":"<2 punchy sentences max 45 words, no spoilers>"}`;
+  const res=await fetch('/api/groq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'system',content:sys},{role:'user',content:JSON.stringify(slim)}],temperature:0.7,max_tokens:200})});
+  if(!res.ok) throw new Error('Groq failed: '+res.status);
+  const data=await res.json();
+  let raw=(data.choices?.[0]?.message?.content||'').trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  let parsed; try{ parsed=JSON.parse(raw); }catch(e){ const m=raw.match(/\{[\s\S]*\}/); if(m) try{ parsed=JSON.parse(m[0]); }catch(e2){} }
+  return (parsed&&validIds.includes(parsed.id))?parsed:null;
+}
+
+/* ── MAIN PICK FLOW ── */
+function showErr(msg){ const b=document.getElementById('errorBox'); b.textContent=msg; b.classList.add('show'); }
+function clearErr(){ document.getElementById('errorBox').classList.remove('show'); }
+
+async function renderTicket(movie, reason){
+  document.getElementById('resPoster').src='https://image.tmdb.org/t/p/w400'+movie.poster_path;
+  document.getElementById('resPoster').alt=movie.title;
+  document.getElementById('resTitle').textContent=movie.title;
+  document.getElementById('resMeta').textContent=[(movie.release_date||'').slice(0,4),'★ '+movie.vote_average.toFixed(1),state.mood].filter(Boolean).join('  ·  ');
+  document.getElementById('resReason').textContent=reason||'Trust the pick.';
+  document.getElementById('result').classList.add('show');
+  state.lastPickedId=movie.id;
+  document.getElementById('resWatch').innerHTML='<span class="watch-note">Checking…</span>';
+  renderWhereToWatch(await fetchWhereToWatch(movie.id));
+}
+
+async function runPick(){
+  clearErr();
+  if(!state.mood||!state.time||!state.mode){ showErr('Select mood, time, and familiar-or-surprise first. Genre is optional.'); return; }
+  document.getElementById('goBtn').disabled=true;
+  document.getElementById('loadingState').classList.add('show');
+  document.getElementById('result').classList.remove('show');
+  try{
+    let pool=state.candidates.filter(m=>!state.excluded.has(m.id));
+    if(pool.length<3){
+      state.page+=1;
+      const fresh=await discoverMovies(state.page);
+      const existing=new Set(state.candidates.map(m=>m.id));
+      state.candidates=state.candidates.concat(fresh.filter(m=>!existing.has(m.id)));
+      pool=state.candidates.filter(m=>!state.excluded.has(m.id));
+    }
+    if(!pool.length) throw new Error('Ran out of matches. Try different filters.');
+    let picked=await askGroqForPick(pool) || await askGroqForPick(pool.slice(0,12));
+    let movie=picked?pool.find(m=>m.id===picked.id):null;
+    if(!movie){ movie=pool[Math.floor(Math.random()*pool.length)]; picked={reason:"The algorithm hesitated — here's the crowd favorite."}; }
+    await renderTicket(movie, picked.reason);
+  }catch(e){ console.error(e); showErr('Something jammed: '+e.message); }
+  finally{ document.getElementById('goBtn').disabled=false; document.getElementById('loadingState').classList.remove('show'); }
+}
+
+document.getElementById('goBtn').addEventListener('click', runPick);
+document.getElementById('notThisBtn').addEventListener('click', ()=>{ if(state.lastPickedId) state.excluded.add(state.lastPickedId); runPick(); });
+document.getElementById('restartBtn').addEventListener('click', ()=>{
+  state={mood:null,time:null,mode:null,genres:new Set(),candidates:[],excluded:new Set(),page:1,lastPickedId:null};
+  document.querySelectorAll('.chip').forEach(b=>b.classList.remove('active'));
+  document.getElementById('result').classList.remove('show'); clearErr();
+  window.scrollTo({top:0,behavior:'smooth'});
+});
+
+/* ════ FIND SIMILAR FEATURE ════ */
+let simState={sourceMovie:null};
+const simInput=document.getElementById('simInput');
+const simDropdown=document.getElementById('simDropdown');
+let simDebounce=null;
+
+simInput.addEventListener('input',()=>{
+  clearTimeout(simDebounce);
+  const q=simInput.value.trim();
+  if(q.length<2){ simDropdown.classList.remove('show'); simDropdown.innerHTML=''; return; }
+  simDebounce=setTimeout(()=>runSimSearch(q),320);
+});
+
+async function runSimSearch(q){
+  try{
+    const hits=await tmdbSearch(q);
+    simDropdown.innerHTML='';
+    if(!hits.length){ simDropdown.classList.remove('show'); return; }
+    hits.forEach(m=>{
+      const item=document.createElement('div'); item.className='sim-drop-item';
+      item.innerHTML=`<img src="https://image.tmdb.org/t/p/w92${m.poster_path}" alt=""><div class="drop-info">${m.title}<span>${(m.release_date||'').slice(0,4)}</span></div>`;
+      item.addEventListener('click',()=>selectSource(m));
+      simDropdown.appendChild(item);
+    });
+    simDropdown.classList.add('show');
+  }catch(e){ simDropdown.classList.remove('show'); }
+}
+
+function selectSource(movie){
+  simState.sourceMovie=movie; simInput.value='';
+  simDropdown.classList.remove('show'); simDropdown.innerHTML='';
+  document.getElementById('sourcePoster').src=`https://image.tmdb.org/t/p/w92${movie.poster_path}`;
+  document.getElementById('sourceInfo').innerHTML=`${movie.title}<span>(${(movie.release_date||'').slice(0,4)})</span>`;
+  document.getElementById('sourceBadge').classList.add('show');
+  document.getElementById('simResults').classList.remove('show');
+  document.getElementById('simError').classList.remove('show');
+}
+
+document.getElementById('srcClear').addEventListener('click',()=>{ simState.sourceMovie=null; document.getElementById('sourceBadge').classList.remove('show'); document.getElementById('simResults').classList.remove('show'); document.getElementById('simError').classList.remove('show'); simInput.value=''; simInput.focus(); });
+document.addEventListener('click',e=>{ if(!simDropdown.contains(e.target)&&e.target!==simInput) simDropdown.classList.remove('show'); });
+document.getElementById('simSearchBtn').addEventListener('click',async()=>{ const q=simInput.value.trim(); if(!q) return; clearTimeout(simDebounce); await runSimSearch(q); if(simDropdown.children.length) simDropdown.classList.add('show'); });
+simInput.addEventListener('keydown',e=>{ if(e.key==='Enter'){ const f=simDropdown.querySelector('.sim-drop-item'); if(f) f.click(); } });
+
+async function fetchSimilarPool(movieId){
+  const [simRes,recRes,detRes]=await Promise.all([
+    fetch(`https://api.themoviedb.org/3/movie/${movieId}/similar?page=1&language=en-US`,{headers:{Authorization:'Bearer '+TMDB_TOKEN}}),
+    fetch(`https://api.themoviedb.org/3/movie/${movieId}/recommendations?page=1&language=en-US`,{headers:{Authorization:'Bearer '+TMDB_TOKEN}}),
+    fetch(`https://api.themoviedb.org/3/movie/${movieId}?language=en-US`,{headers:{Authorization:'Bearer '+TMDB_TOKEN}})
+  ]);
+  const simD=simRes.ok?await simRes.json():{results:[]};
+  const recD=recRes.ok?await recRes.json():{results:[]};
+  const detail=detRes.ok?await detRes.json():{};
+  const seen=new Set();
+  const pool=[...(recD.results||[]),...(simD.results||[])].filter(m=>{ if(!m.poster_path||!m.overview||seen.has(m.id)) return false; seen.add(m.id); return true; }).slice(0,40);
+  return {pool,detail};
+}
+
+async function askGroqForSimilar(detail, candidates){
+  const validIds=candidates.map(m=>m.id);
+  const slim=candidates.map(m=>({id:m.id,title:m.title,year:(m.release_date||'').slice(0,4),rating:m.vote_average,overview:m.overview.slice(0,220)}));
+  const src=`"${detail.title}" (${(detail.release_date||'').slice(0,4)}) — ${(detail.overview||'').slice(0,300)}. Genres: ${(detail.genres||[]).map(g=>g.name).join(', ')}.`;
+  const prompt=`You are an expert film critic for a "find similar films" feature.\n\nSource film: ${src}\n\nPick exactly 3 films from the candidates that are most deeply similar — in themes, narrative style, tone, character archetypes, moral complexity, or emotional impact. Prioritise deep thematic resonance over surface genre match.\n\nValid ids: [${validIds.join(', ')}]. Never invent ids.\n\nRespond ONLY raw JSON:\n[{"id":<number>,"why":"<one sharp sentence max 20 words explaining the specific similarity>"},{"id":<number>,"why":"<max 20 words>"},{"id":<number>,"why":"<max 20 words>"}]`;
+  const res=await fetch('/api/groq',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:GROQ_MODEL,messages:[{role:'user',content:prompt}],temperature:0.6,max_tokens:300})});
+  if(!res.ok) throw new Error('Groq failed: '+res.status);
+  const data=await res.json();
+  let raw=(data.choices?.[0]?.message?.content||'').trim().replace(/^```json/i,'').replace(/^```/,'').replace(/```$/,'').trim();
+  let parsed; try{ parsed=JSON.parse(raw); }catch(e){ const m=raw.match(/\[[\s\S]*\]/); if(m) try{ parsed=JSON.parse(m[0]); }catch(e2){} }
+  if(!Array.isArray(parsed)) throw new Error('Could not parse AI response.');
+  return parsed.filter(p=>validIds.includes(p.id)).slice(0,3);
+}
+
+async function renderSimilarCards(picks, candidates, sourceTitle){
+  const grid=document.getElementById('simGrid'); grid.innerHTML='';
+  document.getElementById('simSourceLine').innerHTML=`3 films with the soul of <b>${sourceTitle}</b>`;
+  document.getElementById('simResults').classList.add('show');
+  picks.forEach(async (pick,i)=>{
+    const movie=candidates.find(m=>m.id===pick.id); if(!movie) return;
+    const card=document.createElement('div'); card.className='sim-card';
+    card.innerHTML=`<div class="sim-card-rank">${i+1}</div><img src="https://image.tmdb.org/t/p/w342${movie.poster_path}" alt="${movie.title}"><div class="sim-card-body"><div class="sim-card-title">${movie.title}</div><div class="sim-card-meta">${(movie.release_date||'').slice(0,4)} · ★ ${movie.vote_average.toFixed(1)}</div><div class="sim-card-why">${pick.why}</div></div><div class="sim-card-where"><div class="w-label">Where to watch</div><div class="w-chips" id="swhere-${movie.id}"><span style="font-size:11px;opacity:.6;">Checking…</span></div></div>`;
+    grid.appendChild(card);
+    try{
+      const region=await fetchWhereToWatch(movie.id);
+      const el=document.getElementById(`swhere-${movie.id}`); if(!region||!el) return;
+      const providers=region.flatrate||region.rent||region.buy||[];
+      el.innerHTML=providers.length?providers.slice(0,4).map(p=>`<span class="w-chip"><img src="https://image.tmdb.org/t/p/w45${p.logo_path}" alt="">${p.provider_name}</span>`).join(''):'<span style="font-size:11px;opacity:.6;">Not listed</span>';
+    }catch(e){}
+  });
+}
+
+function showSimErr(msg){ const el=document.getElementById('simError'); el.textContent=msg; el.classList.add('show'); }
+function clearSimErr(){ document.getElementById('simError').classList.remove('show'); }
+
+document.getElementById('simBtn').addEventListener('click',async ()=>{
+  clearSimErr();
+  if(!simState.sourceMovie){ showSimErr('Search for a film and select it first.'); return; }
+  document.getElementById('simBtn').disabled=true;
+  document.getElementById('simLoading').classList.add('show');
+  document.getElementById('simResults').classList.remove('show');
+  try{
+    const {pool,detail}=await fetchSimilarPool(simState.sourceMovie.id);
+    if(pool.length<3) throw new Error('Not enough similar films found. Try a more widely-known film.');
+    const picks=await askGroqForSimilar(detail,pool);
+    if(!picks.length) throw new Error('AI could not narrow down picks. Try again.');
+    await renderSimilarCards(picks,pool,simState.sourceMovie.title);
+  }catch(e){ console.error(e); showSimErr('Something went wrong: '+e.message); }
+  finally{ document.getElementById('simBtn').disabled=false; document.getElementById('simLoading').classList.remove('show'); }
+});
+</script>
+</body>
+</html>
